@@ -82,8 +82,8 @@ class YOLOLayer(HybridBlock):
         out = out.transpose((0, 2, 3, 1))                                # (B, H, W, (4+1+n_Classes)*n_anchor)
         out = out.reshape((0, 0, 0, self.num_anchors, self.bbox_attrs))  # (B, H, W, n_anchor, (4+1+n_Classes))
 
-        if autograd.is_training():
-            return out.reshape((0, -1, self.bbox_attrs))
+        # if autograd.is_training():
+        #     return out.reshape((0, -1, self.bbox_attrs))
 
         # Get prediction
         tx = F.sigmoid(out.slice_axis(begin=0, end=1, axis=-1))            # Center x
@@ -102,6 +102,11 @@ class YOLOLayer(HybridBlock):
         scaled_anchors_h = [a_h/self.stride for _, a_h in self.anchors]
         anchor_w = nd.tile(nd.array(scaled_anchors_w).reshape((1, 1, 1, -1, 1)), (b, h, w, 1, 1))
         anchor_h = nd.tile(nd.array(scaled_anchors_h).reshape((1, 1, 1, -1, 1)), (b, h, w, 1, 1))
+
+        anchor = F.broadcast_mul(F.concat(grid_x, grid_y, anchor_w, anchor_h, dim=-1), self.stride)
+
+        if autograd.is_training():
+            return out.reshape((0, -1, self.bbox_attrs)), anchor
 
         # Add offset and scale with anchors
         bx = tx + grid_x
@@ -124,18 +129,18 @@ class YOLOLayer(HybridBlock):
 
         # output = F.concat(*[cid, cls_score, left, top, right, bottom], dim=4)
 
-        output = F.concat(boxes_pred.reshape(b, -1, 4)*self.stride,
-                          objness.reshape(b, -1, 1),
-                          cls_pred.reshape(b, -1, self.num_classes),
-                          dim=-1)
-
-        return output
-
-        # boxes_pred = boxes_pred.reshape(b, -1, 4)*self.stride
-        # objness = objness.reshape(b, -1, 1)
-        # cls_pred = cls_pred.reshape(b, -1, self.num_classes)
+        # output = F.concat(boxes_pred.reshape(b, -1, 4)*self.stride,
+        #                   objness.reshape(b, -1, 1),
+        #                   cls_pred.reshape(b, -1, self.num_classes),
+        #                   dim=-1)
         #
-        # return boxes_pred, objness, cls_pred
+        # return output
+
+        boxes_pred = boxes_pred.reshape(b, -1, 4)*self.stride
+        objness = objness.reshape(b, -1, 1)
+        cls_pred = cls_pred.reshape(b, -1, self.num_classes)
+
+        return boxes_pred, objness, cls_pred
 
 
 class YOLO(HybridBlock):
@@ -219,25 +224,35 @@ class YOLO(HybridBlock):
                 featmap[i], sub_feat = expander(featmap[i])
                 if i != 0:
                     featmap[i-1] = F.concat(featmap[i-1], sub_feat)
-        output = []
-        for feat, detection in zip(featmap, self.detection):
-            output.append(detection(feat))
-
-        predictions = F.concat(*output, dim=1)
 
         if autograd.is_training():
-            return predictions
+            output = []
+            anchors = []
+            for feat, detection in zip(featmap, self.detection):
+                out, anchor = detection(feat)
+                output.append(out)
+                anchors.append(anchor)
 
-        boxes_pred, cls_score, cls_id = yolo2target(predictions)
-        # boxes_pred = predictions.slice_axis(begin=0, end=4, axis=-1)
-        # objness = predictions.slice_axis(begin=4, end=5, axis=-1)
-        # mask = objness < self.nms_thresh
-        # cls_pred = predictions.slice_axis(begin=5, end=None, axis=-1)
-        # cls_score = F.broadcast_mul(objness, cls_pred)
-        # cls_id = F.argmax(cls_score, axis=-1, keepdims=True)
-        # scores = F.pick(cls_score, cls_id, axis=-1)
+            predictions = F.concat(*output, dim=1)
+            default_anchors = F.concat(*anchors, dim=1)
+            return predictions, default_anchors
 
-        return boxes_pred, cls_score, cls_id
+        boxes_preds = []
+        objness_scores = []
+        cls_preds = []
+        for feat, detection in zip(featmap, self.detection):
+            boxes_pred, objness, cls_pred = detection(feat)
+            boxes_preds.append(boxes_pred)
+            objness_scores.append(objness)
+            cls_preds.append(cls_pred)
+
+
+        tboxes_preds, tcls_scores, tcls_ids = yolo2target(boxes_preds, objness_scores, cls_preds)
+        # cls_scores = F.broadcast_mul(objness_scores, cls_preds)
+        # cls_id = F.argmax(cls_scores, axis=-1, keepdims=True)
+        # scores = F.pick(cls_scores, cls_id, axis=-1)
+
+        return tboxes_preds, tcls_scores, tcls_ids
 
 
 def get_yolo(features, feature_expand, classes, anchors, strides):
