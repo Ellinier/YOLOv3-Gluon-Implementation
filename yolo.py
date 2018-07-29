@@ -11,10 +11,7 @@ from mxnet.gluon import HybridBlock
 from Darknet53 import darknet53_416
 from Darknet53 import Convolutional
 
-import sys
-sys.path.append('../gluon-cv')
 from gluoncv.data import VOCDetection
-
 
 # def Upsample(data, stride):
 # 	return nd.Upsample(data, scale=stride, sample_type='nearest')
@@ -255,7 +252,7 @@ class YOLO(HybridBlock):
         return tboxes_preds, tcls_scores, tcls_ids
 
 
-def get_yolo(features, feature_expand, classes, anchors, strides):
+def get_yolo(features, feature_expand, classes, anchors, strides, pretrained):
     """Get YOLO models.
 
     Parameters
@@ -277,10 +274,12 @@ def get_yolo(features, feature_expand, classes, anchors, strides):
         A YOLO detection network.
     """
     net = YOLO(features, feature_expand, classes, anchors, strides)
+    if pretrained:
+        net.load_parameters()
     return net
 
 
-def yolo_416_darknet53_voc():
+def yolo_416_darknet53_voc(pretrained=False):
     """YOLO architecture with darknet53 for Pascal VOC.
 
     Parameters
@@ -296,5 +295,5 @@ def yolo_416_darknet53_voc():
                    anchors=[[[10, 13], [16, 30], [33, 23]],
                             [[30, 61], [62, 45], [59, 119]],
                             [[116, 90], [156, 198], [373, 326]]],
-                   strides=[8, 16, 32])
+                   strides=[8, 16, 32], pretrained=pretrained)
     return net

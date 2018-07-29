@@ -5,8 +5,6 @@ import numpy as np
 import mxnet as mx
 from mxnet import autograd
 
-import sys
-sys.path.append('../gluon-cv')
 from gluoncv.data.transforms import bbox as tbbox
 from gluoncv.data.transforms import image as timage
 from gluoncv.data.transforms import experimental

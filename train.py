@@ -1,11 +1,8 @@
-import sys
 import argparse
 
 import mxnet as mx
 from mxnet import gluon
-from mxnet import autograd
 
-sys.path.append('../gluon-cv')
 import gluoncv.data as gdata
 from gluoncv.data.batchify import Tuple, Stack, Pad
 from gluoncv.utils.metrics.voc_detection import VOC07MApMetric
@@ -92,7 +89,6 @@ def train(net, train_data, val_data, eval_metric, args):
     scale_metrics = mx.metric.Loss('BoxScaleLoss')
     obj_metrics = mx.metric.Loss('ObjLoss')
     cls_metrics = mx.metric.Loss('ClassLoss')
-
 
     for epoch in range(args.start_epoch, args.epochs):
         while lr_steps and epoch >= lr_steps[0]:
