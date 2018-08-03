@@ -95,9 +95,10 @@ class YOLODefaultTrainTransform(object):
         net.collect_params().reset_ctx(None)
         with autograd.train_mode():
             _, self._anchors = net(self._fake_x)
+
         from target import YOLOTargetGenerator
         self._target_generator = YOLOTargetGenerator(
-            num_class=len(net.classes), **kwargs)
+            num_classes=len(net.classes), **kwargs)
 
     def __call__(self, src, label):
         """Apply transform to training image/label."""
@@ -142,7 +143,7 @@ class YOLODefaultTrainTransform(object):
         #     self._fake_x, self._feat_maps, self._anchors, self._offsets, gt_bboxes, gt_ids)
         # return img, center_targets[0], scale_targets[0], weights[0], objectness[0], class_targets[0], gt_bboxes[0], gt_ids[0]
 
-        center_targets, scale_targets, objectness, cls_targets = self._target_generator(self._anchors, gt_bboxes, gt_ids)
+        center_targets, scale_targets, objectness, cls_targets = self._target_generator(self._width, gt_bboxes, gt_ids)
         return img, center_targets, scale_targets, objectness, cls_targets
 
 

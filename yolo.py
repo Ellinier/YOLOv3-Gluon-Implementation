@@ -4,6 +4,7 @@ from __future__ import division
 
 from mxnet import nd
 from mxnet import autograd
+from mxnet import symbol
 from mxnet.gluon import nn
 from mxnet.gluon import HybridBlock
 
@@ -47,7 +48,8 @@ class FeatureExpander(HybridBlock):
     def hybrid_forward(self, F, x, *args, **kwargs):
         out = self.conv_stack(x)
         out = self.single_layer(out)
-        sub_x = upsample(self.transition(out))
+        out = self.transition(out)
+        sub_x = upsample(out)
         return out, sub_x
 
 
@@ -79,8 +81,8 @@ class YOLOLayer(HybridBlock):
         out = out.transpose((0, 2, 3, 1))                                # (B, H, W, (4+1+n_Classes)*n_anchor)
         out = out.reshape((0, 0, 0, self.num_anchors, self.bbox_attrs))  # (B, H, W, n_anchor, (4+1+n_Classes))
 
-        # if autograd.is_training():
-        #     return out.reshape((0, -1, self.bbox_attrs))
+        if autograd.is_training():
+            return out.reshape((0, -1, self.bbox_attrs))
 
         # Get prediction
         tx = F.sigmoid(out.slice_axis(begin=0, end=1, axis=-1))            # Center x
@@ -100,10 +102,10 @@ class YOLOLayer(HybridBlock):
         anchor_w = nd.tile(nd.array(scaled_anchors_w).reshape((1, 1, 1, -1, 1)), (b, h, w, 1, 1))
         anchor_h = nd.tile(nd.array(scaled_anchors_h).reshape((1, 1, 1, -1, 1)), (b, h, w, 1, 1))
 
-        anchor = F.broadcast_mul(F.concat(grid_x, grid_y, anchor_w, anchor_h, dim=-1), self.stride)
+        # anchor = F.broadcast_mul(F.concat(grid_x, grid_y, anchor_w, anchor_h, dim=-1), self.stride)  # anchor relative to img
 
-        if autograd.is_training():
-            return out.reshape((0, -1, self.bbox_attrs)), anchor
+        # if autograd.is_training():
+        #     return out.reshape((0, -1, self.bbox_attrs)), anchor.reshape((0, -1, 4))
 
         # Add offset and scale with anchors
         bx = tx + grid_x
@@ -224,15 +226,15 @@ class YOLO(HybridBlock):
 
         if autograd.is_training():
             output = []
-            anchors = []
+            # anchors = []
             for feat, detection in zip(featmap, self.detection):
-                out, anchor = detection(feat)
+                out = detection(feat)
                 output.append(out)
-                anchors.append(anchor)
+                # anchors.append(anchor)
 
             predictions = F.concat(*output, dim=1)
-            default_anchors = F.concat(*anchors, dim=1)
-            return predictions, default_anchors
+            # default_anchors = F.concat(*anchors, dim=1)
+            return predictions  # , default_anchors
 
         boxes_preds = []
         objness_scores = []
@@ -242,7 +244,6 @@ class YOLO(HybridBlock):
             boxes_preds.append(boxes_pred)
             objness_scores.append(objness)
             cls_preds.append(cls_pred)
-
 
         tboxes_preds, tcls_scores, tcls_ids = yolo2target(boxes_preds, objness_scores, cls_preds)
         # cls_scores = F.broadcast_mul(objness_scores, cls_preds)
@@ -267,6 +268,8 @@ def get_yolo(features, feature_expand, classes, anchors, strides, pretrained):
         Scales of anchors for each output feature map.
     strides: list of int
         Strides of grid for each output feature map.
+    pretrained: bool
+        load pretrained parameters or not.
 
     Returns
     -------
@@ -275,7 +278,7 @@ def get_yolo(features, feature_expand, classes, anchors, strides, pretrained):
     """
     net = YOLO(features, feature_expand, classes, anchors, strides)
     if pretrained:
-        net.load_parameters()
+        pass
     return net
 
 
@@ -292,8 +295,11 @@ def yolo_416_darknet53_voc(pretrained=False):
     """
     classes = VOCDetection.CLASSES
     net = get_yolo(features=darknet53_416, feature_expand=True, classes=classes,
-                   anchors=[[[10, 13], [16, 30], [33, 23]],
+                   # anchors=[[[10, 13], [16, 30], [33, 23]],
+                   #          [[30, 61], [62, 45], [59, 119]],
+                   #          [[116, 90], [156, 198], [373, 326]]],
+                   anchors=[[[116, 90], [156, 198], [373, 326]],
                             [[30, 61], [62, 45], [59, 119]],
-                            [[116, 90], [156, 198], [373, 326]]],
-                   strides=[8, 16, 32], pretrained=pretrained)
+                            [[10, 13], [16, 30], [33, 23]]],
+                   strides=[32, 16, 8], pretrained=pretrained)
     return net
