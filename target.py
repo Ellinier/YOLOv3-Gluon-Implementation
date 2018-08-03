@@ -22,19 +22,21 @@ class YOLOTargetGenerator(Block):
         self.num_classes = num_classes
         self.bbox2center = BBoxCornerToCenter(axis=-1, split=True)
 
-    def forward(self, img_size, gt_boxes, gt_ids):
+    def forward(self, img_size, anchors, mask, strides, gt_boxes, gt_ids):
 
-        anchors = [[10, 13], [16, 30], [33, 23], [30, 61], [62, 45], [59, 119], [116, 90], [156, 198], [373, 326]]
-        anchor_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
-        num_layers = len(anchor_mask)
-        grid_shapes = [13, 26, 52]
-        center_targets = [nd.zeros((grid_shapes[i], grid_shapes[i], len(anchor_mask[i]), 2),
+        # anchors = [[10, 13], [16, 30], [33, 23], [30, 61], [62, 45], [59, 119], [116, 90], [156, 198], [373, 326]]
+        # anchor_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
+        # masked_anchors = [[anchors[i] for i in n] for n in anchor_mask]
+        num_layers = len(mask)
+        grid_shapes = [img_size/stride for stride in strides]
+        # grid_shapes = [13, 26, 52]
+        center_targets = [nd.zeros((grid_shapes[i], grid_shapes[i], len(mask[i]), 2),
                            dtype='float32') for i in range(num_layers)]
-        scale_targets = [nd.zeros((grid_shapes[i], grid_shapes[i], len(anchor_mask[i]), 2),
+        scale_targets = [nd.zeros((grid_shapes[i], grid_shapes[i], len(mask[i]), 2),
                                    dtype='float32') for i in range(num_layers)]
-        obj_targets = [nd.zeros((grid_shapes[i], grid_shapes[i], len(anchor_mask[i]), 1),
+        obj_targets = [nd.zeros((grid_shapes[i], grid_shapes[i], len(mask[i]), 1),
                                   dtype='float32') for i in range(num_layers)]
-        cls_targets = [nd.ones((grid_shapes[i], grid_shapes[i], len(anchor_mask[i]), self.num_classes),
+        cls_targets = [nd.ones((grid_shapes[i], grid_shapes[i], len(mask[i]), self.num_classes),
                                   dtype='float32')*-1 for i in range(num_layers)]
 
         # print gt_boxes.shape  # (1L, n_label, 4L)
@@ -47,9 +49,9 @@ class YOLOTargetGenerator(Block):
         ious = nd.contrib.box_iou(shift_anchor_boxes, shift_gt_boxes, format='center')  # (1, n_anchor, n_label, 1)
         matches = ious.argmax(axis=1).asnumpy()  # (1, n_label, 1)
         for i, m in enumerate(matches.flatten()):
-            for x in anchor_mask:
+            for x in mask:
                 if m in x:
-                    layer_index = anchor_mask.index(x)
+                    layer_index = mask.index(x)
                     inlayer_index = x.index(int(m))
                     mask_wh = anchors[int(m)]
 

@@ -168,14 +168,19 @@ class YOLO(HybridBlock):
         number if expecting more objects. You can use -1 to return all detections.
 
     """
-    def __init__(self, features, feat_expand, classes, anchors, strides,
+    def __init__(self, features, feat_expand, classes, anchors, mask, strides,
                  nms_thresh=0.45, nms_topk=400, post_nms=100):
         super(YOLO, self).__init__()
         self.features = features()
         self.feat_expand = feat_expand
         self.classes = classes
         self.num_classes = len(self.classes)
-        self.anchors = anchors  # [[[10,13], [16,30], [33,23]], [[30,61], [62,45], [59,119]], [[116,90], [156,198], [373,326]]]
+        self.anchors = anchors
+        self.mask = mask
+        self.masked_anchors = [[self.anchors[i] for i in n] for n in self.mask]
+        # masked_anchors=[[[116, 90], [156, 198], [373, 326]],
+        #                 [[30, 61], [62, 45], [59, 119]],
+        #                 [[10, 13], [16, 30], [33, 23]]]
         self.strides = strides  # [8, 16, 32]
         self.nms_thresh = nms_thresh
         self.nms_topk = nms_topk
@@ -188,7 +193,7 @@ class YOLO(HybridBlock):
                 for channels in self.channels:
                     self.feature_expander.add(FeatureExpander(channels))
             self.detection = nn.HybridSequential()
-            for anchor, stride in zip(self.anchors, self.strides):  # self.anchor: [[10,13], [16,30], [33,23]]
+            for anchor, stride in zip(self.masked_anchors, self.strides):  # self.anchor: [[10,13], [16,30], [33,23]]
                 self.detection.add(YOLOLayer(anchor, stride, self.num_classes))
 
     def set_nms(self, nms_thresh=0.45, nms_topk=400, post_nms=100):
@@ -234,7 +239,9 @@ class YOLO(HybridBlock):
 
             predictions = F.concat(*output, dim=1)
             # default_anchors = F.concat(*anchors, dim=1)
-            return predictions  # , default_anchors
+            if autograd.is_recording():
+                return predictions
+            return (predictions, self.anchors, self.mask, self.strides)
 
         boxes_preds = []
         objness_scores = []
@@ -253,7 +260,7 @@ class YOLO(HybridBlock):
         return tboxes_preds, tcls_scores, tcls_ids
 
 
-def get_yolo(features, feature_expand, classes, anchors, strides, pretrained):
+def get_yolo(features, feature_expand, classes, anchors, mask, strides, pretrained):
     """Get YOLO models.
 
     Parameters
@@ -276,7 +283,7 @@ def get_yolo(features, feature_expand, classes, anchors, strides, pretrained):
     HybridBlock
         A YOLO detection network.
     """
-    net = YOLO(features, feature_expand, classes, anchors, strides)
+    net = YOLO(features, feature_expand, classes, anchors, mask, strides)
     if pretrained:
         pass
     return net
@@ -298,8 +305,12 @@ def yolo_416_darknet53_voc(pretrained=False):
                    # anchors=[[[10, 13], [16, 30], [33, 23]],
                    #          [[30, 61], [62, 45], [59, 119]],
                    #          [[116, 90], [156, 198], [373, 326]]],
-                   anchors=[[[116, 90], [156, 198], [373, 326]],
-                            [[30, 61], [62, 45], [59, 119]],
-                            [[10, 13], [16, 30], [33, 23]]],
+                   # anchors=[[[116, 90], [156, 198], [373, 326]],
+                   #          [[30, 61], [62, 45], [59, 119]],
+                   #          [[10, 13], [16, 30], [33, 23]]],
+                   anchors=[[10, 13], [16, 30], [33, 23],
+                            [30, 61], [62, 45], [59, 119],
+                            [116, 90], [156, 198],[373, 326]],
+                   mask=[[6, 7, 8], [3, 4, 5], [0, 1, 2]],
                    strides=[32, 16, 8], pretrained=pretrained)
     return net

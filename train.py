@@ -59,8 +59,6 @@ def get_dataset(dataset):
         val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=val_dataset.classes)
     else:
         raise NotImplementedError('Dataset: {} not implemented.'.format(dataset))
-    # print len(train_dataset)  # 16551
-    # print len(val_dataset)  # 4952
     return train_dataset, val_dataset, val_metric
 
 def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_workers):

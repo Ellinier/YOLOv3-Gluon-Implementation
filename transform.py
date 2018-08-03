@@ -94,7 +94,7 @@ class YOLODefaultTrainTransform(object):
         net = copy.deepcopy(net)
         net.collect_params().reset_ctx(None)
         with autograd.train_mode():
-            _, self._anchors = net(self._fake_x)
+            _, self._anchors, self._mask, self._strides = net(self._fake_x)
 
         from target import YOLOTargetGenerator
         self._target_generator = YOLOTargetGenerator(
@@ -143,7 +143,7 @@ class YOLODefaultTrainTransform(object):
         #     self._fake_x, self._feat_maps, self._anchors, self._offsets, gt_bboxes, gt_ids)
         # return img, center_targets[0], scale_targets[0], weights[0], objectness[0], class_targets[0], gt_bboxes[0], gt_ids[0]
 
-        center_targets, scale_targets, objectness, cls_targets = self._target_generator(self._width, gt_bboxes, gt_ids)
+        center_targets, scale_targets, objectness, cls_targets = self._target_generator(self._width, self._anchors, self._mask, self._strides, gt_bboxes, gt_ids)
         return img, center_targets, scale_targets, objectness, cls_targets
 
 
